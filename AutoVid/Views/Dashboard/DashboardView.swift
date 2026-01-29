@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AVFoundation
+import Combine
 
 struct ValidationWarning: View {
     let icon: String
@@ -20,7 +21,9 @@ struct ValidationWarning: View {
 }
 
 struct DashboardView: View {
-    @ObservedObject var viewModel: DashboardViewModel
+    // UPDATED: Replaced @ObservedObject with @Bindable for Swift 6 Observation
+    @Bindable var viewModel: DashboardViewModel
+    
     @State private var hoverEffect = false
     @State private var showingSettings = false
     @AppStorage(AppConfig.Configuration.StorageKeys.autoOpenEditor) private var autoOpenEditor = true
@@ -156,7 +159,7 @@ struct DashboardView: View {
                                 Picker("Device", selection: $viewModel.deviceName) {
                                     Text("Select Device").tag("")
                                     
-                                    if !viewModel.deviceName.isEmpty 
+                                    if !viewModel.deviceName.isEmpty
                                         && !realDevices.contains(where: { $0.name == viewModel.deviceName })
                                         && !simulators.contains(where: { $0.name == viewModel.deviceName }) {
                                         Text(viewModel.deviceName).tag(viewModel.deviceName)
@@ -280,7 +283,7 @@ struct DashboardView: View {
                                 Image(systemName: "folder.fill")
                                 Text(url.lastPathComponent).font(.system(size: 10, design: .monospaced)).lineLimit(1)
                                 Spacer()
-                                Text("Open Viode").font(.system(size: 10, weight: .bold))
+                                Text("Open Video").font(.system(size: 10, weight: .bold))
                             }
                             .padding().background(Color.blue.opacity(0.1)).cornerRadius(12)
                         }.buttonStyle(.plain)
@@ -385,4 +388,3 @@ struct SettingsView: View {
         .preferredColorScheme(.dark)
     }
 }
-

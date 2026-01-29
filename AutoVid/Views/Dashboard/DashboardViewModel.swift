@@ -1,40 +1,78 @@
-@preconcurrency import AVFoundation
+import AVFoundation
 import Combine
 import SwiftUI
+import Observation
 import UniformTypeIdentifiers
 
 @MainActor
-final class DashboardViewModel: NSObject, ObservableObject {
+@Observable
+final class DashboardViewModel {
+    // MARK: - Dependencies
     private let xcodeProjectService: XcodeProjectServiceProtocol
-    private let automationService: AutomationServiceProtocol
+    // We keep the protocol, but Observation works through it if the underlying instance is @Observable
+    let automationService: AutomationServiceProtocol
     private let deviceDiscoveryService: DeviceDiscoveryServiceProtocol
     private let captureService: CaptureServiceProtocol
-    
     let videoRecorder: VideoRecordingServiceProtocol
     
-    @Published var isRecording = false
-    @Published var status = "IDLE"
-    @Published var lastSavedURL: URL?
+    // MARK: - Published State (Observation)
+    var isRecording = false
     
-    @Published var detectedDevices: [AVCaptureDevice] = []
-    @Published var availableDevices: [Device] = []
+    // We use a private backing store for status to handle priority between services
+    private var _localStatus: String = "IDLE"
     
-    @Published var availableProjects: [String] = []
-    @Published var availableSchemes: [String] = []
-    @Published var isLoadingProjects = false
-    @Published var isLoadingSchemes = false
+    // Computed status aggregates various sources
+    var status: String {
+        // If we are actively doing something local, show that
+        if isRecording || _localStatus == "Warming..." || _localStatus == "Saving..." || _localStatus == "Success" || _localStatus.contains("Error") {
+            return _localStatus
+        }
+        // Otherwise show automation status if it's busy
+        if automationService.status != "IDLE" && automationService.status != "Ready" {
+            return automationService.status
+        }
+        // Fallback to Xcode service status (we assume it pushes status to _localStatus via sink below, or we could expose it directly)
+        return _localStatus
+    }
     
-    @Published var isLoadingDevices = false
-    @Published var isBuildingTests = false
-    @Published var buildOutput: String = ""
+    var lastSavedURL: URL?
+    var recordedVideoURL: URL?
     
-    @AppStorage("projectPath") var projectPath = ""
-    @AppStorage("schemeName") var schemeName = ""
-    @AppStorage("deviceName") var deviceName = ""
+    var detectedDevices: [AVCaptureDevice] = []
+    var availableDevices: [Device] = []
+    
+    var availableProjects: [String] = []
+    var availableSchemes: [String] = []
+    
+    var isLoadingProjects = false
+    var isLoadingSchemes = false
+    var isLoadingDevices = false
+    
+    // Pass-through properties for AutomationService to allow View observation
+    var isBuildingTests: Bool {
+        automationService.isBuildingTests
+    }
+    
+    var buildOutput: String {
+        automationService.buildOutput
+    }
+    
+    // MARK: - Settings (User Defaults)
+    // @AppStorage is not directly supported in @Observable classes for view updates.
+    // We use standard property observation + UserDefaults.
+    var projectPath: String {
+        didSet { UserDefaults.standard.set(projectPath, forKey: "projectPath") }
+    }
+    
+    var schemeName: String {
+        didSet { UserDefaults.standard.set(schemeName, forKey: "schemeName") }
+    }
+    
+    var deviceName: String {
+        didSet { UserDefaults.standard.set(deviceName, forKey: "deviceName") }
+    }
     
     var onRecordingFinished: ((URL) -> Void)?
-    
-    @Published var recordedVideoURL: URL?
     
     private var cancellables = Set<AnyCancellable>()
     
@@ -44,7 +82,9 @@ final class DashboardViewModel: NSObject, ObservableObject {
         return df
     }()
     
-    convenience override init() {
+    // MARK: - Init
+    
+    convenience init() {
         let container = DependencyContainer.shared
         self.init(
             xcodeProjectService: container.xcodeProjectService,
@@ -68,33 +108,51 @@ final class DashboardViewModel: NSObject, ObservableObject {
         self.videoRecorder = recordingService
         self.captureService = captureService
         
-        super.init()
+        // Load Defaults
+        self.projectPath = UserDefaults.standard.string(forKey: "projectPath") ?? ""
+        self.schemeName = UserDefaults.standard.string(forKey: "schemeName") ?? ""
+        self.deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? ""
         
-        setupBindings()
-        
+        setupLegacyBindings()
+        setupAutomationCallbacks()
     }
     
-    private func setupBindings() {
+    // MARK: - Setup
+    
+    private func setupLegacyBindings() {
+        // Bridge Combine publishers from legacy services to @Observable properties
+        
         xcodeProjectService.availableProjectsPublisher
-            .assign(to: &$availableProjects)
+            .sink { [weak self] in self?.availableProjects = $0 }
+            .store(in: &cancellables)
         
         xcodeProjectService.availableSchemesPublisher
-            .assign(to: &$availableSchemes)
+            .sink { [weak self] in self?.availableSchemes = $0 }
+            .store(in: &cancellables)
             
         xcodeProjectService.isLoadingProjectsPublisher
-            .assign(to: &$isLoadingProjects)
+            .sink { [weak self] in self?.isLoadingProjects = $0 }
+            .store(in: &cancellables)
             
         xcodeProjectService.isLoadingSchemesPublisher
-            .assign(to: &$isLoadingSchemes)
+            .sink { [weak self] in self?.isLoadingSchemes = $0 }
+            .store(in: &cancellables)
+        
+        xcodeProjectService.statusPublisher
+            .filter { $0 != "IDLE" && $0 != "Ready" }
+            .sink { [weak self] status in self?._localStatus = status }
+            .store(in: &cancellables)
         
         deviceDiscoveryService.detectedDevicesPublisher
-            .assign(to: &$detectedDevices)
+            .sink { [weak self] in self?.detectedDevices = $0 }
+            .store(in: &cancellables)
             
         deviceDiscoveryService.availableDevicesPublisher
             .sink { [weak self] devices in
                 guard let self = self else { return }
                 self.availableDevices = devices
                 
+                // Auto-select device logic
                 if self.deviceName.isEmpty && !devices.isEmpty {
                     if let real = devices.first(where: { $0.type == "Real" }) {
                         self.deviceName = real.name
@@ -106,13 +164,13 @@ final class DashboardViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
             
         deviceDiscoveryService.isLoadingDevicesPublisher
-            .assign(to: &$isLoadingDevices)
-        
-        automationService.isBuildingTestsPublisher
-            .assign(to: &$isBuildingTests)
-            
-        automationService.buildOutputPublisher
-            .assign(to: &$buildOutput)
+            .sink { [weak self] in self?.isLoadingDevices = $0 }
+            .store(in: &cancellables)
+    }
+    
+    private func setupAutomationCallbacks() {
+        // Since AutomationService is now callback/observable based (no publishers),
+        // we wire up the events directly.
         
         automationService.onTestsStarted = { [weak self] in
             Task { @MainActor [weak self] in
@@ -129,24 +187,18 @@ final class DashboardViewModel: NSObject, ObservableObject {
                     await self.stop()
                 }
                 
-                if self.status == "Recording" {
-                    self.status = "Auto Finised"
+                if self._localStatus == "Recording" {
+                    self._localStatus = "Auto Finished"
                 }
             }
         }
-        
-        xcodeProjectService.statusPublisher
-            .filter { $0 != "IDLE" && $0 != "Ready" }
-            .assign(to: &$status)
-            
-        automationService.statusPublisher
-            .filter { $0 != "IDLE" }
-            .assign(to: &$status)
     }
     
     deinit {
+        // Cancellables clean up automatically
     }
     
+    // MARK: - Actions
     
     func findXcodeProjects() {
         xcodeProjectService.findXcodeProjects()
@@ -156,13 +208,13 @@ final class DashboardViewModel: NSObject, ObservableObject {
         xcodeProjectService.fetchSchemes(for: path, currentScheme: schemeName)
     }
     
-    
     func start() async {
         guard let device = detectedDevices.first else {
-            status = "No device found"
+            _localStatus = "No device found"
             return
         }
-        status = "Warming..."
+        _localStatus = "Warming..."
+        
         do {
             let url = try prepareOutputURL()
             
@@ -187,10 +239,10 @@ final class DashboardViewModel: NSObject, ObservableObject {
                         
                         if success {
                             self.isRecording = true
-                            self.status = "Recording"
+                            self._localStatus = "Recording"
                         } else {
                             self.isRecording = false
-                            self.status = "Recorder Failed"
+                            self._localStatus = "Recorder Failed"
                             self.captureService.stopSession()
                         }
                         continuation.resume()
@@ -198,7 +250,7 @@ final class DashboardViewModel: NSObject, ObservableObject {
                 }
             }
         } catch {
-            status = "Error: \(error.localizedDescription)"
+            _localStatus = "Error: \(error.localizedDescription)"
             isRecording = false
         }
     }
@@ -215,7 +267,7 @@ final class DashboardViewModel: NSObject, ObservableObject {
     func stop() async {
         guard isRecording else { return }
         
-        status = "Saving..."
+        _localStatus = "Saving..."
         
         await withCheckedContinuation { continuation in
             captureService.stopRecording { [weak self] url in
@@ -224,15 +276,14 @@ final class DashboardViewModel: NSObject, ObservableObject {
                     if let url = url {
                         self?.lastSavedURL = url
                         self?.recordedVideoURL = url
-                        self?.status = "Success"
+                        self?._localStatus = "Success"
                         self?.isRecording = false
                         
                         self?.captureService.stopSession()
-                        
                         self?.onRecordingFinished?(url)
                         
                     } else {
-                        self?.status = "Error: Failed to save video"
+                        self?._localStatus = "Error: Failed to save video"
                         self?.isRecording = false
                         self?.captureService.stopSession()
                     }
@@ -252,4 +303,3 @@ final class DashboardViewModel: NSObject, ObservableObject {
         return folder.appendingPathComponent("AutoVid_\(Self.fileDateFormatter.string(from: Date())).mp4")
     }
 }
-

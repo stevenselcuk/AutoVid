@@ -1,15 +1,11 @@
 import Foundation
-import Combine
+import Observation
 
 @MainActor
 protocol AutomationServiceProtocol: AnyObject {
     var isBuildingTests: Bool { get }
     var buildOutput: String { get }
     var status: String { get }
-    
-    var isBuildingTestsPublisher: AnyPublisher<Bool, Never> { get }
-    var buildOutputPublisher: AnyPublisher<String, Never> { get }
-    var statusPublisher: AnyPublisher<String, Never> { get }
     
     var onTestsStarted: (() -> Void)? { get set }
     var onRecordingStopRequested: (() -> Void)? { get set }
@@ -25,14 +21,11 @@ protocol AutomationServiceProtocol: AnyObject {
 }
 
 @MainActor
-final class AutomationService: ObservableObject, AutomationServiceProtocol {
-    @Published var isBuildingTests = false
-    @Published var buildOutput: String = ""
-    @Published var status = "IDLE"
-    
-    var isBuildingTestsPublisher: AnyPublisher<Bool, Never> { $isBuildingTests.eraseToAnyPublisher() }
-    var buildOutputPublisher: AnyPublisher<String, Never> { $buildOutput.eraseToAnyPublisher() }
-    var statusPublisher: AnyPublisher<String, Never> { $status.eraseToAnyPublisher() }
+@Observable
+final class AutomationService: AutomationServiceProtocol {
+    var isBuildingTests = false
+    var buildOutput: String = ""
+    var status = "IDLE"
     
     var onTestsStarted: (() -> Void)?
     var onRecordingStopRequested: (() -> Void)?
@@ -83,33 +76,16 @@ final class AutomationService: ObservableObject, AutomationServiceProtocol {
         task.standardOutput = pipe
         task.standardError = pipe
 
-        let outHandle = pipe.fileHandleForReading
-        var hasStartedRecording = false
-
-        Task { [weak self] in
-            guard let self = self else { return }
-            
-            for try await line in pipe.fileHandleForReading.bytes.lines {
-                guard !Task.isCancelled else { break }
-                
-                await MainActor.run {
-                    self.buildOutput = (self.buildOutput + line + "\n").suffix(500).trimmingCharacters(in: .whitespacesAndNewlines)
-                    
-                    print(line)
-                    
-                    if !hasStartedRecording && (
-                        line.contains("Test Suite") && line.contains("started") ||
-                        line.contains("Testing started") ||
-                        line.contains("Test Case") && line.contains("started")
-                    ) {
-                        hasStartedRecording = true
-                        print("\n🎬 [AutoVid] Tests started, beginning recording...\n")
-                        self.onTestsStarted?()
-                    }
-                }
-            }
-        }
+        automationProcess = task
         
+        do {
+            try task.run()
+        } catch {
+            status = "Xcode Failed: \(error.localizedDescription)"
+            isBuildingTests = false
+            return
+        }
+
         print("")
         print("🚀 ========================================")
         print("🚀 RUNNING XCODEBUILD TEST")
@@ -119,32 +95,43 @@ final class AutomationService: ObservableObject, AutomationServiceProtocol {
         print("🚀 Device: \(targetDevice?.name ?? deviceName) (\(targetDevice?.udid ?? "no UDID"))")
         print("🚀 ========================================")
         print("")
-        
-        task.terminationHandler = { [weak self] _ in
-            Task { @MainActor in
-                guard let self = self else { return }
+
+        var hasStartedRecording = false
+
+        do {
+            for try await line in pipe.fileHandleForReading.bytes.lines {
+                if userInitiatedStop { break }
                 
-                if !self.userInitiatedStop {
-                    if hasStartedRecording {
-                        self.onRecordingStopRequested?()
-                    }
-                    
-                    self.isBuildingTests = false
-                    self.status = hasStartedRecording ? "Auto Finised" : "Build Failed - No tests ran"
-                } else {
-                    self.isBuildingTests = false
-                    self.userInitiatedStop = false
+                self.buildOutput = (self.buildOutput + line + "\n").suffix(500).trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                print(line)
+                
+                if !hasStartedRecording && (
+                    line.contains("Test Suite") && line.contains("started") ||
+                    line.contains("Testing started") ||
+                    line.contains("Test Case") && line.contains("started")
+                ) {
+                    hasStartedRecording = true
+                    print("\n🎬 [AutoVid] Tests started, beginning recording...\n")
+                    self.onTestsStarted?()
                 }
             }
-        }
-
-        automationProcess = task
-        do {
-            try task.run()
         } catch {
-            status = "Xcode Failed: \(error.localizedDescription)"
-            isBuildingTests = false
+            print("Stream Error: \(error.localizedDescription)")
         }
+        
+        if !userInitiatedStop {
+            if hasStartedRecording {
+                onRecordingStopRequested?()
+            }
+            status = hasStartedRecording ? "Auto Finised" : "Build Failed - No tests ran"
+        } else {
+            status = "Stopped by User"
+            userInitiatedStop = false
+        }
+        
+        isBuildingTests = false
+        automationProcess = nil
     }
     
     func stop() {
@@ -153,4 +140,3 @@ final class AutomationService: ObservableObject, AutomationServiceProtocol {
         automationProcess?.terminate()
     }
 }
-
