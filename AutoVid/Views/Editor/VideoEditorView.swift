@@ -147,17 +147,22 @@ struct EditorView: View {
             ScrollView {
                 VStack(spacing: 25) {
                     if let player = engine.player {
-                        VideoPlayerView(player: player)
-                            .aspectRatio(engine.videoAspectRatio, contentMode: .fit)
-                            .frame(
-                                maxWidth: engine.videoAspectRatio < 1.0 ? 400 : 700,
-                                maxHeight: engine.videoAspectRatio < 1.0 ? 600 : 500
-                            )
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
+                        GeometryReader { geometry in
+                            ZStack {
+                                Color.black.opacity(0.2) // Background for padding
+                                
+                                VideoPlayerView(player: player)
+                                    .aspectRatio(engine.videoAspectRatio, contentMode: .fit)
+                                    .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    )
+                            }
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                        }
+                        .frame(height: 500) // Give it a reasonable bounded height area, but allow width to flex
                     }
 
                     HStack(spacing: 20) {

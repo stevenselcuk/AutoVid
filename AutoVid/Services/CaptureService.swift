@@ -85,14 +85,18 @@ final class CaptureService: NSObject, CaptureServiceProtocol, @unchecked Sendabl
             let w = Int(dimensions.width)
             let h = Int(dimensions.height)
             
+            print("🔍 [CaptureService] Device active format: \(w)x\(h)")
+            
             if w > 0 && h > 0 {
+                // If we have valid dimensions, strictly use them.
+                // We do NOT want to inject defaults if the device says something else.
                 self.detectedDimensions = (w, h)
             } else {
-                print("⚠️ [CaptureService] Detected 0x0 resolution, using defaults")
+                print("⚠️ [CaptureService] Detected 0x0 resolution, falling back to defaults")
                 self.detectedDimensions = (AppConfig.Configuration.Capture.targetWidth, AppConfig.Configuration.Capture.targetHeight)
             }
             
-            print("📸 [CaptureService] Configured with resolution: \(detectedDimensions)")
+            print("📸 [CaptureService] Configured with resolution: \(self.detectedDimensions)")
         }
     }
     
@@ -125,9 +129,11 @@ final class CaptureService: NSObject, CaptureServiceProtocol, @unchecked Sendabl
             
             Task {
                 do {
-                    try await recorder.start(url: url, width: width, height: height, bitrate: bitrate)
+                    // We pass 0 for width/height because the recorder now uses Lazy Initialization
+                    // to detect the exact resolution from the first frame.
+                    try await recorder.start(url: url, width: 0, height: 0, bitrate: bitrate)
                     self.isRecording = true
-                    print("🎥 [CaptureService] Recording started")
+                    print("🎥 [CaptureService] Recording started (Lazy Init mode)")
                     completion(true)
                 } catch {
                     self.isRecording = false
