@@ -13,7 +13,7 @@ final class EditorViewModel: NSObject, ObservableObject {
     @Published var trimEnd: Double = 0
     @Published var videoAspectRatio: CGFloat = 16 / 9
 
-    @Published var selectedResolution: ExportSettings.Resolution = .appStorePreview
+    @Published var selectedResolution: ExportSettings.Resolution = .original
     @Published var customWidth: String = "1920"
     @Published var customHeight: String = "1080"
     @Published var selectedFrameRate: Int = AppConfig.Configuration.Defaults.defaultFrameRate
@@ -311,6 +311,9 @@ final class EditorViewModel: NSObject, ObservableObject {
                 width: Int(customWidth) ?? 1920,
                 height: Int(customHeight) ?? 1080
             )
+        } else if selectedResolution == .original {
+             let transformedSize = naturalSize.applying(preferredTransform)
+             targetSize = CGSize(width: abs(transformedSize.width), height: abs(transformedSize.height))
         } else {
             targetSize = selectedResolution.size
         }
@@ -323,7 +326,15 @@ final class EditorViewModel: NSObject, ObservableObject {
 
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: composition.tracks(withMediaType: .video).first!)
 
-        let transform = calculateTransform(from: naturalSize, to: targetSize, sourceTransform: preferredTransform)
+        let transform: CGAffineTransform
+        if selectedResolution == .original {
+             // For original resolution, we just want the preferred transform (e.g. rotation)
+             // without trying to scale it into a different box, since the box IS the transformed size.
+             transform = preferredTransform
+        } else {
+             transform = calculateTransform(from: naturalSize, to: targetSize, sourceTransform: preferredTransform)
+        }
+        
         layerInstruction.setTransform(transform, at: .zero)
 
         instruction.layerInstructions = [layerInstruction]
