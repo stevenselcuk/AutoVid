@@ -124,7 +124,7 @@ final class AutomationService: AutomationServiceProtocol {
             if hasStartedRecording {
                 onRecordingStopRequested?()
             }
-            status = hasStartedRecording ? "Auto Finised" : "Build Failed - No tests ran"
+            status = hasStartedRecording ? "Done" : "Build Failed - No tests ran"
         } else {
             status = "Stopped by User"
             userInitiatedStop = false

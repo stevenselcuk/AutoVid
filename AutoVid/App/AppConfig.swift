@@ -5,9 +5,9 @@ enum AppConfig {
     enum UI {
         
         @MainActor enum Colors {
-            static let primary = Color.blue
-            static let success = Color.green
-            static let warning = Color.orange
+            static let primary = Color(hex: "#433FFE")
+            static let success = Color(hex: "#4FFFAF")
+            static let warning = Color(hex:"#FED743")
             static let error = Color.red
             static let recording = Color.red
             

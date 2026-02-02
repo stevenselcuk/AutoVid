@@ -170,7 +170,7 @@ final class XcodeProjectService: ObservableObject, XcodeProjectServiceProtocol {
             if let error = result.error {
                 self.status = error
             } else {
-                self.status = "Ready 1"
+                self.status = "Ready"
             }
         }
     }
