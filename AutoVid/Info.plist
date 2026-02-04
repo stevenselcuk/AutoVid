@@ -8,5 +8,18 @@
 	<string>NEED</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>NEED</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.stevenselcuk.AutoVid</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>autovid</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

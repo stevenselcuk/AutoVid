@@ -100,7 +100,8 @@ final class DashboardViewModel {
         automationService: AutomationServiceProtocol,
         deviceDiscoveryService: DeviceDiscoveryServiceProtocol,
         recordingService: VideoRecordingServiceProtocol,
-        captureService: CaptureServiceProtocol
+        captureService: CaptureServiceProtocol,
+        coordinator: AppCoordinator? = nil
     ) {
         self.xcodeProjectService = xcodeProjectService
         self.automationService = automationService
@@ -115,6 +116,42 @@ final class DashboardViewModel {
         
         setupLegacyBindings()
         setupAutomationCallbacks()
+        
+        if let coordinator = coordinator {
+             coordinator.urlCommandSubject
+                 .receive(on: RunLoop.main)
+                 .sink { [weak self] command in
+                     Task { @MainActor [weak self] in
+                         switch command {
+                         case .start:
+                             await self?.externalStartRecording()
+                         case .stop:
+                             await self?.externalStopRecording()
+                         }
+                     }
+                 }
+                 .store(in: &cancellables)
+         }
+    }
+    
+    // MARK: - External Control
+    
+    func externalStartRecording() async {
+        guard !isRecording else {
+            print("⚠️ [AutoVid] External Start ignored: Already recording.")
+            return
+        }
+        print("🚀 [AutoVid] External Start Command Received")
+        await start()
+    }
+
+    func externalStopRecording() async {
+        guard isRecording else {
+            print("⚠️ [AutoVid] External Stop ignored: Not recording.")
+            return
+        }
+        print("🛑 [AutoVid] External Stop Command Received")
+        await stop()
     }
     
     // MARK: - Setup

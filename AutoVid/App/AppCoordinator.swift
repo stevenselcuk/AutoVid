@@ -24,7 +24,8 @@ final class AppCoordinator: ObservableObject {
             automationService: dependencyContainer.automationService,
             deviceDiscoveryService: dependencyContainer.deviceDiscoveryService,
             recordingService: dependencyContainer.recordingService,
-            captureService: dependencyContainer.captureService
+            captureService: dependencyContainer.captureService,
+            coordinator: self
         )
         
         viewModel.onRecordingFinished = { [weak self] url in
@@ -39,6 +40,30 @@ final class AppCoordinator: ObservableObject {
     }
     
     
+    // URL Command Handling
+    let urlCommandSubject = PassthroughSubject<URLCommand, Never>()
+    
+    enum URLCommand {
+        case start
+        case stop
+    }
+    
+    func handle(url: URL) {
+        // autovid://start
+        // autovid://stop
+        
+        guard let host = url.host() else { return }
+        
+        switch host {
+        case "start":
+            urlCommandSubject.send(.start)
+        case "stop":
+            urlCommandSubject.send(.stop)
+        default:
+            print("Unknown URL command: \(host)")
+        }
+    }
+
     func showEditor(for url: URL) {
         self.editorVideoURL = url
         self.isEditorPresented = true

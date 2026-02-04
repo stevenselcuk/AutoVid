@@ -15,6 +15,9 @@ struct AutoVidApp: App {
     var body: some Scene {
         WindowGroup {
             coordinator.start()
+                .onOpenURL { url in
+                    coordinator.handle(url: url)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
