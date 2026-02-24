@@ -1,5 +1,20 @@
 import SwiftUI
+import AppKit
 
+fileprivate func tickIntervals(for duration: Double) -> (major: Double, minor: Double) {
+    switch duration {
+    case 0 ..< 10:
+        return (1.0, 0.1)
+    case 10 ..< 30:
+        return (2.0, 0.5)
+    case 30 ..< 60:
+        return (5.0, 1.0)
+    case 60 ..< 180:
+        return (10.0, 2.0)
+    default:
+        return (30.0, 5.0)
+    }
+}
 
 struct TimelineTicksView: View {
     let duration: Double
@@ -54,20 +69,6 @@ struct TimelineTicksView: View {
         .frame(height: height)
     }
 
-    private func tickIntervals(for duration: Double) -> (major: Double, minor: Double) {
-        switch duration {
-        case 0 ..< 10:
-            return (1.0, 0.1)
-        case 10 ..< 30:
-            return (2.0, 0.5)
-        case 30 ..< 60:
-            return (5.0, 1.0)
-        case 60 ..< 180:
-            return (10.0, 2.0)
-        default:
-            return (30.0, 5.0)
-        }
-    }
 
     private func formatTickTime(_ seconds: Double) -> String {
         let mins = Int(seconds) / 60
@@ -117,6 +118,7 @@ struct TimelineView: View {
     @State private var tooltipPosition: CGPoint = .zero
     @State private var tooltipTime: Double = 0
     @State private var showTooltip: Bool = false
+    @State private var lastSnappedTime: Double? = nil
 
     enum TimelineElement {
         case playhead
@@ -187,20 +189,21 @@ struct TimelineView: View {
                     hoveredElement = hovering ? .playhead : nil
                 }
                 .gesture(
-                    DragGesture()
+                    DragGesture(coordinateSpace: .named("TimelineSpace"))
                         .onChanged { value in
                             isDraggingPlayhead = true
                             let position = max(0, min(value.location.x, geometry.size.width))
-                            let time = (position / geometry.size.width) * engine.duration
+                            let time = getSnappedTime(for: position, width: geometry.size.width)
                             engine.seek(to: time)
 
                             tooltipTime = time
-                            tooltipPosition = CGPoint(x: position, y: -20)
+                            tooltipPosition = CGPoint(x: (time / engine.duration) * geometry.size.width, y: -20)
                             showTooltip = true
                         }
                         .onEnded { _ in
                             isDraggingPlayhead = false
                             showTooltip = false
+                            lastSnappedTime = nil
                         }
                 )
 
@@ -214,20 +217,21 @@ struct TimelineView: View {
                     hoveredElement = hovering ? .startHandle : nil
                 }
                 .gesture(
-                    DragGesture()
+                    DragGesture(coordinateSpace: .named("TimelineSpace"))
                         .onChanged { value in
                             isDraggingStart = true
                             let position = max(0, min(value.location.x, geometry.size.width))
-                            let time = (position / geometry.size.width) * engine.duration
+                            let time = getSnappedTime(for: position, width: geometry.size.width)
                             engine.updateTrimStart(time)
 
                             tooltipTime = time
-                            tooltipPosition = CGPoint(x: position, y: -20)
+                            tooltipPosition = CGPoint(x: (time / engine.duration) * geometry.size.width, y: -20)
                             showTooltip = true
                         }
                         .onEnded { _ in
                             isDraggingStart = false
                             showTooltip = false
+                            lastSnappedTime = nil
                         }
                 )
 
@@ -241,20 +245,21 @@ struct TimelineView: View {
                     hoveredElement = hovering ? .endHandle : nil
                 }
                 .gesture(
-                    DragGesture()
+                    DragGesture(coordinateSpace: .named("TimelineSpace"))
                         .onChanged { value in
                             isDraggingEnd = true
                             let position = max(0, min(value.location.x, geometry.size.width))
-                            let time = (position / geometry.size.width) * engine.duration
+                            let time = getSnappedTime(for: position, width: geometry.size.width)
                             engine.updateTrimEnd(time)
 
                             tooltipTime = time
-                            tooltipPosition = CGPoint(x: position, y: -20)
+                            tooltipPosition = CGPoint(x: (time / engine.duration) * geometry.size.width, y: -20)
                             showTooltip = true
                         }
                         .onEnded { _ in
                             isDraggingEnd = false
                             showTooltip = false
+                            lastSnappedTime = nil
                         }
                 )
 
@@ -262,9 +267,30 @@ struct TimelineView: View {
                     TimelineTooltip(time: tooltipTime, position: tooltipPosition)
                 }
             }
+            .coordinateSpace(name: "TimelineSpace")
             .frame(height: 60)
         }
         .frame(height: 60)
+    }
+
+    private func getSnappedTime(for position: CGFloat, width: CGFloat) -> Double {
+        guard engine.duration > 0 else { return 0 }
+        let rawTime = (position / width) * engine.duration
+        let minorInterval = tickIntervals(for: engine.duration).minor
+        let nearestTick = round(rawTime / minorInterval) * minorInterval
+        let tickPixelX = (nearestTick / engine.duration) * width
+        let snapThresholdPx: CGFloat = 8.0
+
+        if abs(position - tickPixelX) <= snapThresholdPx {
+            if lastSnappedTime != nearestTick {
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                lastSnappedTime = nearestTick
+            }
+            return nearestTick
+        }
+        
+        lastSnappedTime = nil
+        return rawTime
     }
 
     private func trimStartOffset(in width: CGFloat) -> CGFloat {
