@@ -16,7 +16,7 @@
 - **Live Logic**: Starts recording _exactly_ when the tests launch and stops when they finish.
 - **Built-in Editor**:
   - Trim start/end points.
-  - Crop/Scale for App Store (1290x2796), HD Portrait, or HD Landscape.
+  - Crop/Scale for App Store (886x1920), HD Portrait, or HD Landscape.
   - Validates 30-second App Store limit.
   - Exports high-bitrate MP4s.
 

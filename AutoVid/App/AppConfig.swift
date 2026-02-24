@@ -98,8 +98,8 @@ enum AppConfig {
         }
         
         enum Capture {
-            static let targetWidth = 1290
-            static let targetHeight = 2796
+            static let targetWidth = 886
+            static let targetHeight = 1920
             static let folderName = "AutoVid"
             static let bitrate: Int = 24_000_000
         }
