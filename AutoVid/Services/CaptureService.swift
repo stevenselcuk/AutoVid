@@ -30,6 +30,7 @@ final class CaptureService: NSObject, CaptureServiceProtocol, @unchecked Sendabl
     
     private var captureSession: AVCaptureSession?
     private var videoOutput: AVCaptureVideoDataOutput?
+    private var audioOutput: AVCaptureAudioDataOutput?
     private(set) var detectedDimensions: (width: Int, height: Int) = (AppConfig.Configuration.Capture.targetWidth, AppConfig.Configuration.Capture.targetHeight)
     
     nonisolated(unsafe) private var isRecording = false
@@ -78,6 +79,20 @@ final class CaptureService: NSObject, CaptureServiceProtocol, @unchecked Sendabl
             session.commitConfiguration()
             self.captureSession = session
             self.videoOutput = output
+            
+            // Configure Audio
+            if let audioDevice = AVCaptureDevice.default(for: .audio) {
+                if let audioInput = try? AVCaptureDeviceInput(device: audioDevice), session.canAddInput(audioInput) {
+                    session.addInput(audioInput)
+                    
+                    let aOutput = AVCaptureAudioDataOutput()
+                    aOutput.setSampleBufferDelegate(self, queue: outputQueue)
+                    if session.canAddOutput(aOutput) {
+                        session.addOutput(aOutput)
+                        self.audioOutput = aOutput
+                    }
+                }
+            }
             
             let formatDescription = device.activeFormat.formatDescription
             let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
@@ -172,11 +187,12 @@ final class CaptureService: NSObject, CaptureServiceProtocol, @unchecked Sendabl
 }
 
 
-extension CaptureService: AVCaptureVideoDataOutputSampleBufferDelegate {
+extension CaptureService: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard isRecording, let recorder = activeRecorder else { return }
         
-        Task { await recorder.append(sampleBuffer) }
+        let isVideo = output is AVCaptureVideoDataOutput
+        Task { await recorder.append(sampleBuffer, isVideo: isVideo) }
     }
 }
 

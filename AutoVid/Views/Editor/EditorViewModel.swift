@@ -230,12 +230,13 @@ final class EditorViewModel: NSObject, ObservableObject {
 
                 try compositionVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
 
-                if let audioTrack = tracks.first(where: { $0.mediaType == .audio }),
-                   let compositionAudioTrack = composition.addMutableTrack(
-                       withMediaType: .audio,
-                       preferredTrackID: kCMPersistentTrackID_Invalid
-                   ) {
-                    try? compositionAudioTrack.insertTimeRange(timeRange, of: audioTrack, at: .zero)
+                if let audioTrack = tracks.first(where: { $0.mediaType == .audio }) {
+                    if let compositionAudioTrack = composition.addMutableTrack(
+                        withMediaType: .audio,
+                        preferredTrackID: kCMPersistentTrackID_Invalid
+                    ) {
+                        try? compositionAudioTrack.insertTimeRange(timeRange, of: audioTrack, at: .zero)
+                    }
                 }
 
                 let videoComposition = self.createVideoComposition(
@@ -376,5 +377,6 @@ final class EditorViewModel: NSObject, ObservableObject {
         let filename = "\(originalName)_EDITED_\(timestamp).mp4"
         return folder.appendingPathComponent(filename)
     }
+
 }
 

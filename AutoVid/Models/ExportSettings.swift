@@ -8,7 +8,7 @@ struct ExportSettings {
 
     enum Resolution: String, CaseIterable {
         case original = "Original"
-        case appStorePreview = "iPhone App Store"
+        case appStorePreview = "iPhone (Portrait)"
         case ipadPortrait = "iPad App Store (Portrait)"
         case ipadLandscape = "iPad App Store (Landscape)"
         case hdPortrait = "HD Portrait"

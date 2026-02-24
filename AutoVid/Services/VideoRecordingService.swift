@@ -4,13 +4,14 @@ import CoreMedia
 protocol VideoRecordingServiceProtocol: Sendable {
     func start(url: URL, width: Int?, height: Int?, bitrate: Int) async throws
     func stop() async throws -> URL
-    func append(_ sampleBuffer: CMSampleBuffer) async
+    func append(_ sampleBuffer: CMSampleBuffer, isVideo: Bool) async
 }
 
 
 actor VideoRecordingService: VideoRecordingServiceProtocol {
     private var assetWriter: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
+    private var audioInput: AVAssetWriterInput?
     private var isRecording = false
     private var firstSampleTime: CMTime = .invalid
 
@@ -34,8 +35,9 @@ actor VideoRecordingService: VideoRecordingServiceProtocol {
         self.firstSampleTime = .invalid
         self.assetWriter = nil
         self.videoInput = nil
+        self.audioInput = nil
         
-        print("🎥 [VideoRecordingService] Started (Pending). Waiting for first frame to determine resolution...")
+        print("🎥 [VideoRecordingService] Started (Pending). Waiting for first video frame...")
     }
 
     func stop() async throws -> URL {
@@ -55,6 +57,7 @@ actor VideoRecordingService: VideoRecordingServiceProtocol {
 
         isRecording = false
         videoInput?.markAsFinished()
+        audioInput?.markAsFinished()
         
         return await withCheckedContinuation { continuation in
             let url = writer.outputURL
@@ -65,11 +68,11 @@ actor VideoRecordingService: VideoRecordingServiceProtocol {
         }
     }
 
-    func append(_ sampleBuffer: CMSampleBuffer) {
+    func append(_ sampleBuffer: CMSampleBuffer, isVideo: Bool) {
         guard isRecording else { return }
         
-        // Lazy Initialization
         if assetWriter == nil {
+            guard isVideo else { return } // Drop audio frames until writer is set up by first video frame
             guard let url = pendingURL else { return }
             do {
                 try setupWriter(url: url, sampleBuffer: sampleBuffer)
@@ -80,8 +83,6 @@ actor VideoRecordingService: VideoRecordingServiceProtocol {
             }
         }
         
-        guard let input = videoInput, input.isReadyForMoreMediaData else { return }
-
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
         if firstSampleTime == .invalid {
@@ -89,7 +90,13 @@ actor VideoRecordingService: VideoRecordingServiceProtocol {
             assetWriter?.startSession(atSourceTime: pts)
         }
         
-        input.append(sampleBuffer)
+        if isVideo {
+            guard let input = videoInput, input.isReadyForMoreMediaData else { return }
+            input.append(sampleBuffer)
+        } else {
+            guard let input = audioInput, input.isReadyForMoreMediaData else { return }
+            input.append(sampleBuffer)
+        }
     }
     
     private func setupWriter(url: URL, sampleBuffer: CMSampleBuffer) throws {
@@ -128,6 +135,20 @@ actor VideoRecordingService: VideoRecordingServiceProtocol {
             writer.add(input)
         } else {
             throw NSError(domain: "VideoRecordingService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cannot add input to writer"])
+        }
+
+        let audioSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: 44100.0,
+            AVNumberOfChannelsKey: 2,
+            AVEncoderBitRateKey: 128000
+        ]
+        let aInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+        aInput.expectsMediaDataInRealTime = true
+        self.audioInput = aInput
+
+        if writer.canAdd(aInput) {
+            writer.add(aInput)
         }
 
         if writer.startWriting() {
