@@ -202,27 +202,10 @@ struct TimelineView: View {
                 .scaleEffect(isDraggingPlayhead ? 1.1 : (hoveredElement == .playhead ? 1.05 : 1.0))
                 .animation(.spring(response: 0.2), value: isDraggingPlayhead)
                 .animation(.spring(response: 0.2), value: hoveredElement)
+                .zIndex((hoveredElement == .playhead || isDraggingPlayhead) ? 10 : 0)
                 .onHover { hovering in
                     hoveredElement = hovering ? .playhead : nil
                 }
-                .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineSpace"))
-                        .onChanged { value in
-                            isDraggingPlayhead = true
-                            let position = max(halfHandle, min(value.location.x, w - halfHandle))
-                            let time = getSnappedTime(for: position, width: w)
-                            engine.seek(to: time)
-
-                            tooltipTime = time
-                            tooltipPosition = CGPoint(x: timeToX(time, in: w), y: -20)
-                            showTooltip = true
-                        }
-                        .onEnded { _ in
-                            isDraggingPlayhead = false
-                            showTooltip = false
-                            lastSnappedTime = nil
-                        }
-                )
 
                 // Start Handle
                 EnhancedTrimHandle(
@@ -231,27 +214,10 @@ struct TimelineView: View {
                     isHovered: hoveredElement == .startHandle
                 )
                 .position(x: timeToX(engine.trimStart, in: w), y: 30)
+                .zIndex((hoveredElement == .startHandle || isDraggingStart) ? 10 : 1)
                 .onHover { hovering in
                     hoveredElement = hovering ? .startHandle : nil
                 }
-                .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineSpace"))
-                        .onChanged { value in
-                            isDraggingStart = true
-                            let position = max(halfHandle, min(value.location.x, w - halfHandle))
-                            let time = getSnappedTime(for: position, width: w)
-                            engine.updateTrimStart(time)
-
-                            tooltipTime = time
-                            tooltipPosition = CGPoint(x: timeToX(time, in: w), y: -20)
-                            showTooltip = true
-                        }
-                        .onEnded { _ in
-                            isDraggingStart = false
-                            showTooltip = false
-                            lastSnappedTime = nil
-                        }
-                )
 
                 // End Handle
                 EnhancedTrimHandle(
@@ -260,33 +226,65 @@ struct TimelineView: View {
                     isHovered: hoveredElement == .endHandle
                 )
                 .position(x: timeToX(engine.trimEnd, in: w), y: 30)
+                .zIndex((hoveredElement == .endHandle || isDraggingEnd) ? 10 : 1)
                 .onHover { hovering in
                     hoveredElement = hovering ? .endHandle : nil
                 }
-                .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineSpace"))
-                        .onChanged { value in
-                            isDraggingEnd = true
-                            let position = max(halfHandle, min(value.location.x, w - halfHandle))
-                            let time = getSnappedTime(for: position, width: w)
-                            engine.updateTrimEnd(time)
-
-                            tooltipTime = time
-                            tooltipPosition = CGPoint(x: timeToX(time, in: w), y: -20)
-                            showTooltip = true
-                        }
-                        .onEnded { _ in
-                            isDraggingEnd = false
-                            showTooltip = false
-                            lastSnappedTime = nil
-                        }
-                )
 
                 if showTooltip {
                     TimelineTooltip(time: tooltipTime, position: tooltipPosition)
                 }
             }
+            .contentShape(Rectangle())
             .coordinateSpace(name: "TimelineSpace")
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineSpace"))
+                    .onChanged { value in
+                        let position = max(halfHandle, min(value.location.x, w - halfHandle))
+                        let time = getSnappedTime(for: position, width: w)
+
+                        if !isDraggingStart && !isDraggingEnd && !isDraggingPlayhead {
+                            let startX = timeToX(engine.trimStart, in: w)
+                            let endX = timeToX(engine.trimEnd, in: w)
+                            let headX = timeToX(engine.currentTime, in: w)
+                            
+                            let distStart = abs(value.startLocation.x - startX)
+                            let distEnd = abs(value.startLocation.x - endX)
+                            let distHead = abs(value.startLocation.x - headX)
+                            
+                            let handleHitArea: CGFloat = 30.0
+                            
+                            if distStart < handleHitArea && distStart <= distEnd && distStart <= distHead {
+                                isDraggingStart = true
+                            } else if distEnd < handleHitArea && distEnd <= distHead {
+                                isDraggingEnd = true
+                            } else if distHead < handleHitArea {
+                                isDraggingPlayhead = true
+                            } else {
+                                isDraggingPlayhead = true
+                            }
+                        }
+
+                        if isDraggingStart {
+                            engine.updateTrimStart(time)
+                        } else if isDraggingEnd {
+                            engine.updateTrimEnd(time)
+                        } else if isDraggingPlayhead {
+                            engine.seek(to: time)
+                        }
+
+                        tooltipTime = time
+                        tooltipPosition = CGPoint(x: timeToX(time, in: w), y: -20)
+                        showTooltip = true
+                    }
+                    .onEnded { _ in
+                        isDraggingStart = false
+                        isDraggingEnd = false
+                        isDraggingPlayhead = false
+                        showTooltip = false
+                        lastSnappedTime = nil
+                    }
+            )
             .frame(height: 60)
         }
         .frame(height: 60)
