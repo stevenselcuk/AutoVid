@@ -120,6 +120,9 @@ struct TimelineView: View {
     @State private var showTooltip: Bool = false
     @State private var lastSnappedTime: Double? = nil
 
+    private let handleWidth: CGFloat = 24.0
+    private let halfHandle: CGFloat = 12.0
+
     enum TimelineElement {
         case playhead
         case startHandle
@@ -128,51 +131,63 @@ struct TimelineView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let w = geometry.size.width
             ZStack(alignment: .leading) {
+                // Background Track
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color.white.opacity(0.1))
 
-                    TimelineTicksView(duration: engine.duration, width: geometry.size.width)
+                    TimelineTicksView(duration: engine.duration, width: trackWidth(for: w))
                 }
+                .frame(width: trackWidth(for: w))
+                .offset(x: halfHandle)
 
-                if trimStartOffset(in: geometry.size.width) > 0 {
+                // Left Dark Track Mask
+                let sOffsetX = timeToX(engine.trimStart, in: w)
+                if sOffsetX > halfHandle {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color.black.opacity(0.4))
-                        .frame(width: trimStartOffset(in: geometry.size.width))
+                        .frame(width: sOffsetX - halfHandle)
+                        .offset(x: halfHandle)
                 }
 
-                let rightOffset = trimEndOffset(in: geometry.size.width)
-                if rightOffset < geometry.size.width {
+                // Right Dark Track Mask
+                let eOffsetX = timeToX(engine.trimEnd, in: w)
+                if eOffsetX < w - halfHandle {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color.black.opacity(0.4))
-                        .frame(width: geometry.size.width - rightOffset)
-                        .offset(x: rightOffset)
+                        .frame(width: w - halfHandle - eOffsetX)
+                        .offset(x: eOffsetX)
                 }
 
+                // Trimmed Blue Region
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.blue.opacity(0.25))
-                    .frame(width: trimmedWidth(in: geometry.size.width))
-                    .offset(x: trimStartOffset(in: geometry.size.width))
+                    .frame(width: max(0, eOffsetX - sOffsetX))
+                    .offset(x: sOffsetX)
 
+                // Limit Line (30s)
                 if engine.duration > 30 {
-                    let limitX = (30.0 / engine.duration) * geometry.size.width
+                    let limitX = timeToX(30, in: w)
+                    if limitX < w - halfHandle {
+                        Rectangle()
+                            .fill(Color.red.opacity(0.15))
+                            .frame(width: max(0, w - halfHandle - limitX))
+                            .offset(x: limitX)
 
-                    Rectangle()
-                        .fill(Color.red.opacity(0.15))
-                        .frame(width: geometry.size.width - limitX)
-                        .offset(x: limitX)
-
-                    Rectangle()
-                        .fill(Color.orange.opacity(0.6))
-                        .frame(width: 2)
-                        .offset(x: limitX)
+                        Rectangle()
+                            .fill(Color.orange.opacity(0.6))
+                            .frame(width: 2)
+                            .offset(x: limitX)
+                    }
                 }
 
+                // Playhead
                 ZStack {
                     Rectangle()
                         .fill(engine.isPlaying ? Color.green : Color.white)
-                        .frame(width: 3)
+                        .frame(width: 3, height: 60)
                         .shadow(color: .black.opacity(0.5), radius: 2)
 
                     Circle()
@@ -181,7 +196,9 @@ struct TimelineView: View {
                         .offset(y: -24)
                         .shadow(color: .black.opacity(0.3), radius: 3)
                 }
-                .offset(x: playheadOffset(in: geometry.size.width))
+                .contentShape(Rectangle())
+                .frame(width: 24, height: 60)
+                .position(x: timeToX(engine.currentTime, in: w), y: 30)
                 .scaleEffect(isDraggingPlayhead ? 1.1 : (hoveredElement == .playhead ? 1.05 : 1.0))
                 .animation(.spring(response: 0.2), value: isDraggingPlayhead)
                 .animation(.spring(response: 0.2), value: hoveredElement)
@@ -189,15 +206,15 @@ struct TimelineView: View {
                     hoveredElement = hovering ? .playhead : nil
                 }
                 .gesture(
-                    DragGesture(coordinateSpace: .named("TimelineSpace"))
+                    DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineSpace"))
                         .onChanged { value in
                             isDraggingPlayhead = true
-                            let position = max(0, min(value.location.x, geometry.size.width))
-                            let time = getSnappedTime(for: position, width: geometry.size.width)
+                            let position = max(halfHandle, min(value.location.x, w - halfHandle))
+                            let time = getSnappedTime(for: position, width: w)
                             engine.seek(to: time)
 
                             tooltipTime = time
-                            tooltipPosition = CGPoint(x: (time / engine.duration) * geometry.size.width, y: -20)
+                            tooltipPosition = CGPoint(x: timeToX(time, in: w), y: -20)
                             showTooltip = true
                         }
                         .onEnded { _ in
@@ -207,25 +224,26 @@ struct TimelineView: View {
                         }
                 )
 
+                // Start Handle
                 EnhancedTrimHandle(
                     isStart: true,
                     isActive: isDraggingStart,
                     isHovered: hoveredElement == .startHandle
                 )
-                .offset(x: trimStartOffset(in: geometry.size.width) - 12)
+                .position(x: timeToX(engine.trimStart, in: w), y: 30)
                 .onHover { hovering in
                     hoveredElement = hovering ? .startHandle : nil
                 }
                 .gesture(
-                    DragGesture(coordinateSpace: .named("TimelineSpace"))
+                    DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineSpace"))
                         .onChanged { value in
                             isDraggingStart = true
-                            let position = max(0, min(value.location.x, geometry.size.width))
-                            let time = getSnappedTime(for: position, width: geometry.size.width)
+                            let position = max(halfHandle, min(value.location.x, w - halfHandle))
+                            let time = getSnappedTime(for: position, width: w)
                             engine.updateTrimStart(time)
 
                             tooltipTime = time
-                            tooltipPosition = CGPoint(x: (time / engine.duration) * geometry.size.width, y: -20)
+                            tooltipPosition = CGPoint(x: timeToX(time, in: w), y: -20)
                             showTooltip = true
                         }
                         .onEnded { _ in
@@ -235,25 +253,26 @@ struct TimelineView: View {
                         }
                 )
 
+                // End Handle
                 EnhancedTrimHandle(
                     isStart: false,
                     isActive: isDraggingEnd,
                     isHovered: hoveredElement == .endHandle
                 )
-                .offset(x: trimEndOffset(in: geometry.size.width) - 12)
+                .position(x: timeToX(engine.trimEnd, in: w), y: 30)
                 .onHover { hovering in
                     hoveredElement = hovering ? .endHandle : nil
                 }
                 .gesture(
-                    DragGesture(coordinateSpace: .named("TimelineSpace"))
+                    DragGesture(minimumDistance: 0, coordinateSpace: .named("TimelineSpace"))
                         .onChanged { value in
                             isDraggingEnd = true
-                            let position = max(0, min(value.location.x, geometry.size.width))
-                            let time = getSnappedTime(for: position, width: geometry.size.width)
+                            let position = max(halfHandle, min(value.location.x, w - halfHandle))
+                            let time = getSnappedTime(for: position, width: w)
                             engine.updateTrimEnd(time)
 
                             tooltipTime = time
-                            tooltipPosition = CGPoint(x: (time / engine.duration) * geometry.size.width, y: -20)
+                            tooltipPosition = CGPoint(x: timeToX(time, in: w), y: -20)
                             showTooltip = true
                         }
                         .onEnded { _ in
@@ -273,12 +292,27 @@ struct TimelineView: View {
         .frame(height: 60)
     }
 
+    private func trackWidth(for width: CGFloat) -> CGFloat {
+        return max(0, width - handleWidth)
+    }
+
+    private func timeToX(_ time: Double, in width: CGFloat) -> CGFloat {
+        guard engine.duration > 0 else { return halfHandle }
+        return halfHandle + (time / engine.duration) * trackWidth(for: width)
+    }
+
+    private func xToTime(_ x: CGFloat, in width: CGFloat) -> Double {
+        guard engine.duration > 0 else { return 0 }
+        let clampedX = max(halfHandle, min(x, width - halfHandle))
+        return ((clampedX - halfHandle) / trackWidth(for: width)) * engine.duration
+    }
+
     private func getSnappedTime(for position: CGFloat, width: CGFloat) -> Double {
         guard engine.duration > 0 else { return 0 }
-        let rawTime = (position / width) * engine.duration
+        let rawTime = xToTime(position, in: width)
         let minorInterval = tickIntervals(for: engine.duration).minor
         let nearestTick = round(rawTime / minorInterval) * minorInterval
-        let tickPixelX = (nearestTick / engine.duration) * width
+        let tickPixelX = timeToX(nearestTick, in: width)
         let snapThresholdPx: CGFloat = 8.0
 
         if abs(position - tickPixelX) <= snapThresholdPx {
@@ -291,26 +325,6 @@ struct TimelineView: View {
         
         lastSnappedTime = nil
         return rawTime
-    }
-
-    private func trimStartOffset(in width: CGFloat) -> CGFloat {
-        guard engine.duration > 0 else { return 0 }
-        return (engine.trimStart / engine.duration) * width
-    }
-
-    private func trimEndOffset(in width: CGFloat) -> CGFloat {
-        guard engine.duration > 0 else { return 0 }
-        return (engine.trimEnd / engine.duration) * width
-    }
-
-    private func trimmedWidth(in width: CGFloat) -> CGFloat {
-        let width = trimEndOffset(in: width) - trimStartOffset(in: width)
-        return max(0, width)
-    }
-
-    private func playheadOffset(in width: CGFloat) -> CGFloat {
-        guard engine.duration > 0 else { return 0 }
-        return (engine.currentTime / engine.duration) * width
     }
 }
 
@@ -353,6 +367,7 @@ struct EnhancedTrimHandle: View {
                 .foregroundColor(.blue.opacity(0.6))
                 .offset(y: -22)
         }
+        .contentShape(Rectangle())
         .scaleEffect(isActive ? 1.1 : (isHovered ? 1.05 : 1.0))
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isActive)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
