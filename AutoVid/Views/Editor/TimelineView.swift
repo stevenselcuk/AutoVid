@@ -34,12 +34,12 @@ struct TimelineTicksView: View {
                 let isMinor = time.truncatingRemainder(dividingBy: majorInterval) != 0
 
                 if isMinor {
-                    let tickHeight: CGFloat = 6
+                    let tickHeight: CGFloat = 4
                     let path = Path { p in
                         p.move(to: CGPoint(x: x, y: size.height - tickHeight))
                         p.addLine(to: CGPoint(x: x, y: size.height))
                     }
-                    context.stroke(path, with: .color(.white.opacity(0.2)), lineWidth: 1)
+                    context.stroke(path, with: .color(Color.white.opacity(0.15)), lineWidth: 1)
                 }
 
                 time += minorInterval
@@ -49,18 +49,18 @@ struct TimelineTicksView: View {
             while time <= duration {
                 let x = (time / duration) * size.width
 
-                let tickHeight: CGFloat = 12
+                let tickHeight: CGFloat = 8
                 let path = Path { p in
                     p.move(to: CGPoint(x: x, y: size.height - tickHeight))
                     p.addLine(to: CGPoint(x: x, y: size.height))
                 }
-                context.stroke(path, with: .color(.white.opacity(0.4)), lineWidth: 1.5)
+                context.stroke(path, with: .color(Color.white.opacity(0.3)), lineWidth: 1.5)
 
                 let timeText = formatTickTime(time)
-                let textPosition = CGPoint(x: x, y: size.height - 18)
+                let textPosition = CGPoint(x: x, y: size.height - 14)
                 context.draw(Text(timeText)
                     .font(.system(size: 8, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.6)),
+                    .foregroundColor(.white.opacity(0.4)),
                     at: textPosition)
 
                 time += majorInterval
@@ -93,7 +93,7 @@ struct TimelineTooltip: View {
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(Color.black.opacity(0.8))
+                    .fill(AppConfig.UI.Colors.primary)
                     .shadow(color: .black.opacity(0.3), radius: 4)
             )
             .foregroundColor(.white)
@@ -135,8 +135,8 @@ struct TimelineView: View {
             ZStack(alignment: .leading) {
                 // Background Track
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.white.opacity(0.1))
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.black.opacity(0.2))
 
                     TimelineTicksView(duration: engine.duration, width: trackWidth(for: w))
                 }
@@ -146,8 +146,8 @@ struct TimelineView: View {
                 // Left Dark Track Mask
                 let sOffsetX = timeToX(engine.trimStart, in: w)
                 if sOffsetX > halfHandle {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.black.opacity(0.4))
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.black.opacity(0.5))
                         .frame(width: sOffsetX - halfHandle)
                         .offset(x: halfHandle)
                 }
@@ -155,16 +155,20 @@ struct TimelineView: View {
                 // Right Dark Track Mask
                 let eOffsetX = timeToX(engine.trimEnd, in: w)
                 if eOffsetX < w - halfHandle {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.black.opacity(0.4))
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.black.opacity(0.5))
                         .frame(width: w - halfHandle - eOffsetX)
                         .offset(x: eOffsetX)
                 }
 
-                // Trimmed Blue Region
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.blue.opacity(0.25))
+                // Trimmed Active Region
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(AppConfig.UI.Colors.primary.opacity(0.15))
                     .frame(width: max(0, eOffsetX - sOffsetX))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(AppConfig.UI.Colors.primary.opacity(0.3), lineWidth: 1)
+                    )
                     .offset(x: sOffsetX)
 
                 // Limit Line (30s)
@@ -172,13 +176,13 @@ struct TimelineView: View {
                     let limitX = timeToX(30, in: w)
                     if limitX < w - halfHandle {
                         Rectangle()
-                            .fill(Color.red.opacity(0.15))
+                            .fill(AppConfig.UI.Colors.warning.opacity(0.1))
                             .frame(width: max(0, w - halfHandle - limitX))
                             .offset(x: limitX)
 
                         Rectangle()
-                            .fill(Color.orange.opacity(0.6))
-                            .frame(width: 2)
+                            .fill(AppConfig.UI.Colors.warning)
+                            .frame(width: 1)
                             .offset(x: limitX)
                     }
                 }
@@ -186,23 +190,29 @@ struct TimelineView: View {
                 // Playhead
                 ZStack {
                     Rectangle()
-                        .fill(engine.isPlaying ? Color.green : Color.white)
-                        .frame(width: 3, height: 60)
-                        .shadow(color: .black.opacity(0.5), radius: 2)
+                        .fill(Color.white)
+                        .frame(width: 2, height: 60)
+                        .shadow(color: .black.opacity(0.5), radius: 1)
 
                     Circle()
-                        .fill(engine.isPlaying ? Color.green : Color.white)
-                        .frame(width: 12, height: 12)
-                        .offset(y: -24)
-                        .shadow(color: .black.opacity(0.3), radius: 3)
+                        .fill(Color.white)
+                        .frame(width: 10, height: 10)
+                        .offset(y: -28)
+                        .shadow(color: .black.opacity(0.3), radius: 2)
+
+                    if isDraggingPlayhead {
+                        Circle()
+                            .stroke(Color.white.opacity(0.5), lineWidth: 4)
+                            .frame(width: 18, height: 18)
+                            .offset(y: -28)
+                    }
                 }
                 .contentShape(Rectangle())
                 .frame(width: 24, height: 60)
                 .position(x: timeToX(engine.currentTime, in: w), y: 30)
-                .scaleEffect(isDraggingPlayhead ? 1.1 : (hoveredElement == .playhead ? 1.05 : 1.0))
+                .scaleEffect(isDraggingPlayhead ? 1.0 : (hoveredElement == .playhead ? 1.0 : 1.0))
                 .animation(.spring(response: 0.2), value: isDraggingPlayhead)
-                .animation(.spring(response: 0.2), value: hoveredElement)
-                .zIndex((hoveredElement == .playhead || isDraggingPlayhead) ? 10 : 0)
+                .zIndex((hoveredElement == .playhead || isDraggingPlayhead) ? 20 : 10)
                 .onHover { hovering in
                     hoveredElement = hovering ? .playhead : nil
                 }
@@ -214,7 +224,7 @@ struct TimelineView: View {
                     isHovered: hoveredElement == .startHandle
                 )
                 .position(x: timeToX(engine.trimStart, in: w), y: 30)
-                .zIndex((hoveredElement == .startHandle || isDraggingStart) ? 10 : 1)
+                .zIndex((hoveredElement == .startHandle || isDraggingStart) ? 15 : 5)
                 .onHover { hovering in
                     hoveredElement = hovering ? .startHandle : nil
                 }
@@ -226,13 +236,14 @@ struct TimelineView: View {
                     isHovered: hoveredElement == .endHandle
                 )
                 .position(x: timeToX(engine.trimEnd, in: w), y: 30)
-                .zIndex((hoveredElement == .endHandle || isDraggingEnd) ? 10 : 1)
+                .zIndex((hoveredElement == .endHandle || isDraggingEnd) ? 15 : 5)
                 .onHover { hovering in
                     hoveredElement = hovering ? .endHandle : nil
                 }
 
                 if showTooltip {
                     TimelineTooltip(time: tooltipTime, position: tooltipPosition)
+                        .zIndex(30)
                 }
             }
             .contentShape(Rectangle())
@@ -258,8 +269,6 @@ struct TimelineView: View {
                                 isDraggingStart = true
                             } else if distEnd < handleHitArea && distEnd <= distHead {
                                 isDraggingEnd = true
-                            } else if distHead < handleHitArea {
-                                isDraggingPlayhead = true
                             } else {
                                 isDraggingPlayhead = true
                             }
@@ -334,36 +343,21 @@ struct EnhancedTrimHandle: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.95),
-                            Color.white.opacity(0.85),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: 24, height: 60)
+                .fill(AppConfig.UI.Colors.primary)
+                .frame(width: 14, height: 40) // Slimmer handle
+                .shadow(color: AppConfig.UI.Colors.primary.opacity(0.5), radius: isActive ? 6 : 3)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.blue.opacity(isActive ? 0.8 : 0.3), lineWidth: isActive ? 2 : 1)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
                 )
-                .shadow(color: .black.opacity(0.4), radius: isActive ? 6 : 4)
-                .shadow(color: .blue.opacity(isHovered ? 0.5 : 0), radius: isHovered ? 8 : 0)
 
-            VStack(spacing: 3) {
-                ForEach(0 ..< 4) { _ in
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(Color.black.opacity(0.4))
-                        .frame(width: 3, height: 14)
+            VStack(spacing: 2) {
+                ForEach(0 ..< 3) { _ in
+                    Circle()
+                        .fill(Color.white.opacity(0.8))
+                        .frame(width: 2, height: 2)
                 }
             }
-
-            Image(systemName: isStart ? "chevron.left" : "chevron.right")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.blue.opacity(0.6))
-                .offset(y: -22)
         }
         .contentShape(Rectangle())
         .scaleEffect(isActive ? 1.1 : (isHovered ? 1.05 : 1.0))
@@ -371,12 +365,3 @@ struct EnhancedTrimHandle: View {
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
     }
 }
-
-struct TrimHandle: View {
-    let isStart: Bool
-
-    var body: some View {
-        EnhancedTrimHandle(isStart: isStart, isActive: false, isHovered: false)
-    }
-}
-
