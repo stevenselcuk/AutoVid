@@ -22,11 +22,20 @@ struct EditorView: View {
 
                 // Export Settings Button
                 Button(action: { showingExportSettings.toggle() }) {
-                    Label("Export Settings", systemImage: AppConfig.UI.Icons.settings)
-                        .font(.system(size: 11, weight: .bold))
+                    HStack(spacing: 6) {
+                        Image(systemName: AppConfig.UI.Icons.settings)
+                        Text("Export Settings")
+                    }
+                    .font(.system(size: 11, weight: .bold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(AppConfig.UI.Colors.capsuleBackground)
+                    )
+                    .foregroundColor(.white)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
                 .popover(isPresented: $showingExportSettings) {
                     ExportSettingsView(engine: engine)
                 }
