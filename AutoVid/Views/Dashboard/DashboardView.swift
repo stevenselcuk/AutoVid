@@ -3,23 +3,6 @@ import UniformTypeIdentifiers
 import AVFoundation
 import Combine
 
-struct ValidationWarning: View {
-    let icon: String
-    let text: String
-    var color: Color = AppConfig.UI.Colors.warning
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .foregroundColor(color)
-                .font(.system(size: 10))
-            Text(text)
-                .font(.system(size: 10))
-                .foregroundColor(color)
-        }
-    }
-}
-
 struct DashboardView: View {
     // UPDATED: Replaced @ObservedObject with @Bindable for Swift 6 Observation
     @Bindable var viewModel: DashboardViewModel
@@ -44,22 +27,24 @@ struct DashboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Header
             HStack {
-                Text(AppConfig.UI.Strings.appName).font(.system(.headline, design: .monospaced)).tracking(2)
+                Text(AppConfig.UI.Strings.appName)
+                    .font(.system(.headline, design: .monospaced))
+                    .tracking(2)
                 Spacer()
 
+                StatusBadge(
+                    text: viewModel.status,
+                    isActive: viewModel.isRecording,
+                    color: viewModel.isRecording ? AppConfig.UI.Colors.recording : AppConfig.UI.Colors.success
+                )
 
-                HStack(spacing: 8) {
-                    Circle().fill(viewModel.isRecording ? AppConfig.UI.Colors.recording : AppConfig.UI.Colors.success).frame(width: AppConfig.UI.Dimensions.statusDotSize, height: AppConfig.UI.Dimensions.statusDotSize).symbolEffect(.pulse, isActive: viewModel.isRecording)
-                    Text(viewModel.status).font(.system(size: 10, weight: .bold, design: .monospaced))
-
-                    if viewModel.isBuildingTests {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 16, height: 16)
-                    }
+                if viewModel.isBuildingTests {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(width: 16, height: 16)
                 }
-                .padding(.horizontal, 12).padding(.vertical, 6).background(Capsule().fill(AppConfig.UI.Colors.capsuleBackground))
                 
                 Button(action: { showingSettings = true }) {
                     Image(systemName: AppConfig.UI.Icons.settings)
@@ -70,17 +55,16 @@ struct DashboardView: View {
                 .help("Settings")
 
             }
-            .padding(25).background(AppConfig.UI.Colors.slightlyTransparent)
+            .padding(25)
+            .background(AppConfig.UI.Colors.slightlyTransparent)
 
             ScrollView {
                 VStack(spacing: 25) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Label("XCODE AUTOMATION", systemImage: AppConfig.UI.Icons.terminal)
-                                .font(.system(size: AppConfig.UI.Dimensions.iconSmall, weight: .black))
-                                .foregroundColor(AppConfig.UI.Colors.textSecondary)
-                            Spacer()
 
+                    // Project Selection
+                    DashboardSection(title: "XCODE AUTOMATION", icon: AppConfig.UI.Icons.terminal) {
+                        HStack {
+                            Spacer()
                             Button(action: { viewModel.findXcodeProjects() }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: AppConfig.UI.Icons.refresh)
@@ -92,127 +76,117 @@ struct DashboardView: View {
                             .buttonStyle(.plain)
                             .disabled(viewModel.isLoadingProjects)
                         }
+                        .padding(.bottom, 4)
 
-                        VStack(spacing: 10) {
-                            HStack {
-                                Picker("Project", selection: $viewModel.projectPath) {
-                                    Text("Select Project").tag("")
-                                    if !viewModel.projectPath.isEmpty && viewModel.projectPath != "browse" && !viewModel.availableProjects.contains(viewModel.projectPath) {
-                                        Text(URL(fileURLWithPath: viewModel.projectPath).lastPathComponent).tag(viewModel.projectPath)
-                                    }
-                                    ForEach(viewModel.availableProjects, id: \.self) { project in
-                                        Text(URL(fileURLWithPath: project).lastPathComponent).tag(project)
-                                    }
-                                    Divider()
-                                    Text("Browse...").tag("browse")
-                                }
-                                .onChange(of: viewModel.projectPath) { _, newValue in
-                                    if newValue == "browse" {
-                                        openFilePanel()
-                                    } else {
-                                        viewModel.fetchSchemes(for: newValue)
-                                    }
-                                }
-                                .disabled(viewModel.isLoadingProjects)
-
-                                if viewModel.isLoadingProjects {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                        .frame(width: 20, height: 20)
-                                }
-                            }
-
-                            if viewModel.projectPath.isEmpty {
-                                Text("Select an Xcode project or workspace")
-                                    .font(.system(size: 9))
+                        VStack(spacing: 16) {
+                            // Project Picker
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Project")
+                                    .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-
-                            HStack {
-                                Picker("Scheme", selection: $viewModel.schemeName) {
-                                    Text(viewModel.projectPath.isEmpty ? "Select Project First" : "Select Scheme").tag("")
-                                    if !viewModel.schemeName.isEmpty && !viewModel.availableSchemes.contains(viewModel.schemeName) {
-                                        Text(viewModel.schemeName).tag(viewModel.schemeName)
+                                HStack {
+                                    Picker("", selection: $viewModel.projectPath) {
+                                        Text("Select Project").tag("")
+                                        if !viewModel.projectPath.isEmpty && viewModel.projectPath != "browse" && !viewModel.availableProjects.contains(viewModel.projectPath) {
+                                            Text(URL(fileURLWithPath: viewModel.projectPath).lastPathComponent).tag(viewModel.projectPath)
+                                        }
+                                        ForEach(viewModel.availableProjects, id: \.self) { project in
+                                            Text(URL(fileURLWithPath: project).lastPathComponent).tag(project)
+                                        }
+                                        Divider()
+                                        Text("Browse...").tag("browse")
                                     }
-                                    ForEach(viewModel.availableSchemes, id: \.self) { scheme in
-                                        Text(scheme).tag(scheme)
+                                    .labelsHidden()
+                                    .onChange(of: viewModel.projectPath) { _, newValue in
+                                        if newValue == "browse" {
+                                            openFilePanel()
+                                        } else {
+                                            viewModel.fetchSchemes(for: newValue)
+                                        }
+                                    }
+                                    .disabled(viewModel.isLoadingProjects)
+
+                                    if viewModel.isLoadingProjects {
+                                        ProgressView().scaleEffect(0.5)
                                     }
                                 }
-                                .disabled(viewModel.projectPath.isEmpty || viewModel.isLoadingSchemes)
+                            }
 
-                                if viewModel.isLoadingSchemes {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                        .frame(width: 20, height: 20)
+                            // Scheme Picker
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Scheme")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                HStack {
+                                    Picker("", selection: $viewModel.schemeName) {
+                                        Text(viewModel.projectPath.isEmpty ? "Select Project First" : "Select Scheme").tag("")
+                                        if !viewModel.schemeName.isEmpty && !viewModel.availableSchemes.contains(viewModel.schemeName) {
+                                            Text(viewModel.schemeName).tag(viewModel.schemeName)
+                                        }
+                                        ForEach(viewModel.availableSchemes, id: \.self) { scheme in
+                                            Text(scheme).tag(scheme)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .disabled(viewModel.projectPath.isEmpty || viewModel.isLoadingSchemes)
+
+                                    if viewModel.isLoadingSchemes {
+                                        ProgressView().scaleEffect(0.5)
+                                    }
                                 }
                             }
 
-                            if !viewModel.projectPath.isEmpty && viewModel.schemeName.isEmpty && !viewModel.isLoadingSchemes {
-                                Text(viewModel.availableSchemes.isEmpty ? "No schemes found" : "Select a scheme to run")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(viewModel.availableSchemes.isEmpty ? .red : .secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+                            // Device Picker
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Test Device")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                HStack {
+                                    Picker("", selection: $viewModel.deviceName) {
+                                        Text("Select Device").tag("")
 
-                            HStack {
-                                Picker("Device", selection: $viewModel.deviceName) {
-                                    Text("Select Device").tag("")
-                                    
-                                    if !viewModel.deviceName.isEmpty
-                                        && !realDevices.contains(where: { $0.name == viewModel.deviceName })
-                                        && !simulators.contains(where: { $0.name == viewModel.deviceName }) {
-                                        Text(viewModel.deviceName).tag(viewModel.deviceName)
-                                    }
+                                        if !viewModel.deviceName.isEmpty
+                                            && !realDevices.contains(where: { $0.name == viewModel.deviceName })
+                                            && !simulators.contains(where: { $0.name == viewModel.deviceName }) {
+                                            Text(viewModel.deviceName).tag(viewModel.deviceName)
+                                        }
 
-                                    if !realDevices.isEmpty {
-                                        Section(header: Text("Real Devices")) {
-                                            ForEach(realDevices) { device in
-                                                HStack {
-                                                    Image(systemName: "iphone.gen3")
-                                                        .foregroundColor(device.isUSBConnected ? .green : .orange)
-                                                    Text(device.name)
-                                                    if device.isUSBConnected {
-                                                        Image(systemName: "cable.connector")
-                                                            .foregroundColor(.green)
-                                                            .font(.system(size: 10))
-                                                    }
-                                                }.tag(device.name)
+                                        if !realDevices.isEmpty {
+                                            Section(header: Text("Real Devices")) {
+                                                ForEach(realDevices) { device in
+                                                    DeviceRow(
+                                                        name: device.name,
+                                                        icon: "iphone.gen3",
+                                                        color: device.isUSBConnected ? .green : .orange
+                                                    ).tag(device.name)
+                                                }
+                                            }
+                                        }
+
+                                        if !simulators.isEmpty {
+                                            Section(header: Text("Simulators")) {
+                                                ForEach(simulators) { device in
+                                                    DeviceRow(
+                                                        name: device.name,
+                                                        icon: "laptopcomputer",
+                                                        color: .blue
+                                                    ).tag(device.name)
+                                                }
                                             }
                                         }
                                     }
+                                    .labelsHidden()
+                                    .disabled(viewModel.isLoadingDevices)
 
-                                    if !simulators.isEmpty {
-                                        Section(header: Text("Simulators")) {
-                                            ForEach(simulators) { device in
-                                                HStack {
-                                                    Image(systemName: "laptopcomputer")
-                                                        .foregroundColor(.blue)
-                                                    Text(device.name)
-                                                }.tag(device.name)
-                                            }
-                                        }
+                                    if viewModel.isLoadingDevices {
+                                        ProgressView().scaleEffect(0.5)
                                     }
                                 }
-                                .disabled(viewModel.isLoadingDevices)
-
-                                if viewModel.isLoadingDevices {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                        .frame(width: 20, height: 20)
-                                }
-                            }
-
-                            if viewModel.deviceName.isEmpty {
-                                Text("Select a device to run tests on")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                     }
-                    .padding().background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.05)))
 
+                    // Connected Device Info
                     if let device = viewModel.detectedDevices.first {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
@@ -222,9 +196,11 @@ struct DashboardView: View {
                             Spacer()
                             Image(systemName: "cable.connector").foregroundColor(.green)
                         }
-                        .padding().background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.05)))
+                        .padding()
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.05)))
                     }
 
+                    // Console Output
                     if viewModel.isBuildingTests && !viewModel.buildOutput.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -246,6 +222,7 @@ struct DashboardView: View {
                         .background(RoundedRectangle(cornerRadius: 12).fill(Color.orange.opacity(0.05)))
                     }
 
+                    // Validation Warnings
                     if !isReadyToRun && !viewModel.isRecording {
                         VStack(alignment: .leading, spacing: 6) {
                             if viewModel.projectPath.isEmpty {
@@ -262,31 +239,53 @@ struct DashboardView: View {
                         .background(RoundedRectangle(cornerRadius: 12).fill(Color.orange.opacity(0.1)))
                     }
 
+                    // Main Action Button
                     Button(action: {
                         Task { viewModel.isRecording ? await viewModel.stop() : await viewModel.startWithAutomation() }
                     }) {
                         VStack(spacing: 12) {
                             ZStack {
-                                Circle().fill(viewModel.isRecording ? AppConfig.UI.Colors.recording : (isReadyToRun ? AppConfig.UI.Colors.primary : Color.gray)).frame(width: 100, height: 100).shadow(color: (viewModel.isRecording ? AppConfig.UI.Colors.recording : AppConfig.UI.Colors.primary).opacity(0.3), radius: 15)
-                                Image(systemName: viewModel.isRecording ? AppConfig.UI.Icons.stop : AppConfig.UI.Icons.play).font(.system(size: AppConfig.UI.Dimensions.iconHuge)).foregroundColor(.white)
+                                Circle()
+                                    .fill(viewModel.isRecording ? AppConfig.UI.Colors.recording : (isReadyToRun ? AppConfig.UI.Colors.primary : Color.gray))
+                                    .frame(width: 100, height: 100)
+                                    .shadow(color: (viewModel.isRecording ? AppConfig.UI.Colors.recording : AppConfig.UI.Colors.primary).opacity(0.3), radius: 15)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 4)
+                                    )
+
+                                Image(systemName: viewModel.isRecording ? AppConfig.UI.Icons.stop : AppConfig.UI.Icons.play)
+                                    .font(.system(size: AppConfig.UI.Dimensions.iconHuge))
+                                    .foregroundColor(.white)
                             }
-                            Text(viewModel.isRecording ? "Stop" : "Run").font(.system(size: 10, weight: .black))
+                            Text(viewModel.isRecording ? "Stop Recording" : "Start Automation")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.secondary)
                         }
-                        .scaleEffect(hoverEffect ? 1.05 : 1.0).animation(.spring(), value: hoverEffect)
+                        .scaleEffect(hoverEffect ? 1.05 : 1.0)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: hoverEffect)
                     }
-                    .buttonStyle(.plain).onHover { hoverEffect = $0 }
+                    .buttonStyle(.plain)
+                    .onHover { hoverEffect = $0 }
                     .disabled(!isReadyToRun && !viewModel.isRecording)
 
+                    // Last Saved Video
                     if let url = viewModel.lastSavedURL {
                         Button(action: { NSWorkspace.shared.open(url) }) {
                             HStack {
                                 Image(systemName: "folder.fill")
-                                Text(url.lastPathComponent).font(.system(size: 10, design: .monospaced)).lineLimit(1)
+                                Text(url.lastPathComponent)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .lineLimit(1)
                                 Spacer()
-                                Text("Open Video").font(.system(size: 10, weight: .bold))
+                                Text("Open Video")
+                                    .font(.system(size: 10, weight: .bold))
                             }
-                            .padding().background(Color.blue.opacity(0.1)).cornerRadius(12)
-                        }.buttonStyle(.plain)
+                            .padding()
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(30)
@@ -321,6 +320,23 @@ struct DashboardView: View {
     }
 }
 
+// Kept locally as it is specific to this view context
+struct ValidationWarning: View {
+    let icon: String
+    let text: String
+    var color: Color = AppConfig.UI.Colors.warning
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.system(size: 10))
+            Text(text)
+                .font(.system(size: 10))
+                .foregroundColor(color)
+        }
+    }
+}
 
 struct SettingsView: View {
     @Binding var autoOpenEditor: Bool
